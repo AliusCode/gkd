@@ -16,38 +16,20 @@ jobs:
           distribution: 'zulu'
           java-version: '21'
 
+      # 移除 Gradle 缓存加密（无密钥时无需配置）
       - uses: gradle/actions/setup-gradle@v5
-        with:
-          cache-encryption-key: ${{ secrets.GRADLE_CACHE_ENCRYPTION_KEY }}
 
-      - name: write gkd secrets info
-        run: |
-          echo ${{ secrets.GKD_STORE_FILE_BASE64 }} | base64 --decode > ${{ github.workspace }}/gkd.jks
-          echo GKD_STORE_FILE='${{ github.workspace }}/gkd.jks' >> gradle.properties
-          echo GKD_STORE_PASSWORD='${{ secrets.GKD_STORE_PASSWORD }}' >> gradle.properties
-          echo GKD_KEY_ALIAS='${{ secrets.GKD_KEY_ALIAS }}' >> gradle.properties
-          echo GKD_KEY_PASSWORD='${{ secrets.GKD_KEY_PASSWORD }}' >> gradle.properties
-
-      - name: write play secrets info
-        run: |
-          echo ${{ secrets.PLAY_STORE_FILE_BASE64 }} | base64 --decode > ${{ github.workspace }}/play.jks
-          echo PLAY_STORE_FILE='${{ github.workspace }}/play.jks' >> gradle.properties
-          echo PLAY_STORE_PASSWORD='${{ secrets.PLAY_STORE_PASSWORD }}' >> gradle.properties
-          echo PLAY_KEY_ALIAS='${{ secrets.PLAY_KEY_ALIAS }}' >> gradle.properties
-          echo PLAY_KEY_PASSWORD='${{ secrets.PLAY_KEY_PASSWORD }}' >> gradle.properties
-
+      # 完全移除所有签名文件/密码写入步骤（Debug 包无需签名）
+      
       - run: chmod 777 ./gradlew
-      - run: ./gradlew app:assembleGkdRelease app:bundlePlayRelease
+      # 仅构建 GKD Debug 包（核心：只执行 Debug 构建，避开 Release 签名）
+      - run: ./gradlew app:assembleGkdDebug
 
+      # 上传 Debug 包产物（路径对应 Debug 构建）
       - uses: actions/upload-artifact@v4
         with:
-          name: release
-          path: app/build/outputs/apk/gkd/release
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: playRelease
-          path: app/build/outputs/bundle/playRelease
+          name: debug-release
+          path: app/build/outputs/apk/gkd/debug
 
       - uses: actions/upload-artifact@v4
         with:
@@ -71,7 +53,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: release
+          name: debug-release
           path: release
 
       - uses: actions/download-artifact@v4
@@ -79,6 +61,15 @@ jobs:
           name: CHANGELOG.md
 
       - run: ls -R
+
+      # 新增：删除已有 Tag 和 Release（避免重复）
+      - name: Delete existing release and tag
+        uses: dev-drprasad/delete-tag-and-release@v0.2.1
+        with:
+          tag_name: ${{ github.ref_name }}
+          delete_release: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - id: create_release
         uses: actions/create-release@v1
@@ -95,8 +86,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: release/app-gkd-release.apk
-          asset_name: gkd-${{ github.ref_name }}.apk
+          asset_path: release/app-gkd-debug.apk
+          asset_name: gkd-${{ github.ref_name }}-debug.apk
           asset_content_type: application/vnd.android.package-archive
 
       - run: zip -r outputs.zip outputs

@@ -92,23 +92,32 @@ android {
         resValues = true
     }
 
-    val gkdSigningConfig = signingConfigs.create("gkd") {
-        storeFile = file(project.properties["GKD_STORE_FILE"] as String)
-        storePassword = project.properties["GKD_STORE_PASSWORD"].toString()
-        keyAlias = project.properties["GKD_KEY_ALIAS"].toString()
-        keyPassword = project.properties["GKD_KEY_PASSWORD"].toString()
-    }
-
-    val playSigningConfig = if (project.hasProperty("PLAY_STORE_FILE")) {
-        signingConfigs.create("play") {
-            storeFile = file(project.properties["PLAY_STORE_FILE"].toString())
-            storePassword = project.properties["PLAY_STORE_PASSWORD"].toString()
-            keyAlias = project.properties["PLAY_KEY_ALIAS"].toString()
-            keyPassword = project.properties["PLAY_KEY_PASSWORD"].toString()
+    // 核心修复1：显式指定类型 + 正确获取默认Debug签名
+    val gkdSigningConfig: com.android.build.api.dsl.ApkSigningConfig = 
+        if (project.hasProperty("GKD_STORE_FILE")) {
+            signingConfigs.create("gkd") {
+                storeFile = file(project.properties["GKD_STORE_FILE"] as String)
+                storePassword = project.properties["GKD_STORE_PASSWORD"].toString()
+                keyAlias = project.properties["GKD_KEY_ALIAS"].toString()
+                keyPassword = project.properties["GKD_KEY_PASSWORD"].toString()
+            }
+        } else {
+            // 修复语法：用getByName获取默认Debug签名（Gradle Kotlin DSL 正确写法）
+            signingConfigs.getByName("debug")
         }
-    } else {
-        gkdSigningConfig
-    }
+
+    // 核心修复2：显式指定类型
+    val playSigningConfig: com.android.build.api.dsl.ApkSigningConfig = 
+        if (project.hasProperty("PLAY_STORE_FILE")) {
+            signingConfigs.create("play") {
+                storeFile = file(project.properties["PLAY_STORE_FILE"].toString())
+                storePassword = project.properties["PLAY_STORE_PASSWORD"].toString()
+                keyAlias = project.properties["PLAY_KEY_ALIAS"].toString()
+                keyPassword = project.properties["PLAY_KEY_PASSWORD"].toString()
+            }
+        } else {
+            gkdSigningConfig
+        }
 
     buildTypes {
         all {
@@ -126,6 +135,7 @@ android {
             )
         }
         debug {
+            // 类型匹配：ApkSigningConfig → ApkSigningConfig?
             signingConfig = gkdSigningConfig
             applicationIdSuffix = ".debug"
             resValue("color", "better_black", "#FF5D92")
@@ -138,10 +148,12 @@ android {
         flavorDimensions += "channel"
         create("gkd") {
             isDefault = true
+            // 类型匹配
             signingConfig = gkdSigningConfig
             resValue("bool", "is_accessibility_tool", "true")
         }
         create("play") {
+            // 类型匹配
             signingConfig = playSigningConfig
             resValue("bool", "is_accessibility_tool", "false")
         }
